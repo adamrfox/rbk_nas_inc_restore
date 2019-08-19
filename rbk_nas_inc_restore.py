@@ -48,7 +48,7 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore):
     return (files_to_restore)
 
 def run_restore(type, rubrik, snap_id, restore_config):
-    if type == "restore_files":
+    if type == "restore_files" or type == "export_files":
         rubrik_restore = rubrik.post('internal', '/fileset/snapshot/' + str(snap_id) + "/" + type, restore_config)
     else:
         rubrik_restore = rubrik.post('v1', '/fileset/snapshot/' + str(snap_id) + "/" + type, restore_config)
@@ -71,10 +71,23 @@ def run_restore(type, rubrik, snap_id, restore_config):
             print "Status: " + job_status
     return()
 
-def generate_restore_config(files, restore_path):
+def generate_restore_config(files, restore_path, delim):
     file_list = []
     for f in files:
-        file_config = {"path": f, "restorePath": restore_path}
+        ff = f.split(delim)
+        ff.pop()
+        file_path = delim.join(ff)
+        print "restore_path = " + restore_path
+        print "file_path" + file_path
+        if restore_path == delim:
+            if file_path[-1] == delim:
+                restore_path_instance = file_path[:-1]
+            else:
+                restore_path_instance = file_path
+        else:
+            restore_path_instance = restore_path + file_path
+        print "Instance = " + restore_path_instance
+        file_config = {"path": f, "restorePath": restore_path_instance}
         file_list.append(file_config)
     res_config = {"restoreConfig": file_list, "ignoreErrors": True}
     return(res_config)
@@ -260,8 +273,9 @@ if __name__ == "__main__":
             inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
             inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
         current_index += 1
-    dprint(restore_job)
+    dprint(str(restore_job))
     x = 0
+    print "Reducing Incremental Data..."
     while x < len(restore_job)-1:
         delete_list = []
         for i, f in enumerate(restore_job[x][1]):
@@ -273,15 +287,21 @@ if __name__ == "__main__":
         for dc in delete_list:
             restore_job[x][1].remove(dc)
         x += 1
-    dprint(restore_job)
+    dprint(str(restore_job))
     for job in restore_job:
         if job[1]:
-            restore_config = generate_restore_config(job[1], restore_path)
+            restore_config = generate_restore_config(job[1], restore_path, delim)
+            if restore_host != host:
+                print "EXPORT JOB"
+                restore_config += {"hostId": restore_host_id, "shareId": restore_share_id}
+                job_type = "export_files"
+            else:
+                job_type = "restore_files"
             dprint(job[0] + ":")
-            dprint(restore_config)
+            dprint(str(restore_config))
             job_time = get_job_time(snap_list, job[0])
             print "Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path
-            run_restore("restore_files", rubrik, job[0], restore_config)
+            run_restore(job_type, rubrik, job[0], restore_config)
 
 
 
