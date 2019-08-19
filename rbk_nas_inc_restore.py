@@ -77,8 +77,6 @@ def generate_restore_config(files, restore_type, restore_path, delim):
         ff = f.split(delim)
         ff.pop()
         file_path = delim.join(ff)
-        print "restore_path = " + restore_path
-        print "file_path" + file_path
         if restore_path == delim:
             if file_path[-1] == delim:
                 restore_path_instance = file_path[:-1]
