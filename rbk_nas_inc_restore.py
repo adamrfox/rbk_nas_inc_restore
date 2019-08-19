@@ -71,7 +71,7 @@ def run_restore(type, rubrik, snap_id, restore_config):
             print "Status: " + job_status
     return()
 
-def generate_restore_config(files, restore_path, delim):
+def generate_restore_config(files, restore_type, restore_path, delim):
     file_list = []
     for f in files:
         ff = f.split(delim)
@@ -87,9 +87,15 @@ def generate_restore_config(files, restore_path, delim):
         else:
             restore_path_instance = restore_path + file_path
         print "Instance = " + restore_path_instance
-        file_config = {"path": f, "restorePath": restore_path_instance}
+        if restore_type == "restore_files":
+            file_config = {"path": f, "restorePath": restore_path_instance}
+        else:
+            file_config = {"srcPath": f, "dstPath": restore_path_instance}
         file_list.append(file_config)
-    res_config = {"restoreConfig": file_list, "ignoreErrors": True}
+    if restore_type == "restore_files":
+        res_config = {"restoreConfig": file_list, "ignoreErrors": True}
+    else:
+        res_config = {"exportPathPairs": file_list, "ignoreErrors": True}
     return(res_config)
 
 def get_job_time(snap_list, id):
@@ -125,6 +131,7 @@ if __name__ == "__main__":
     restore_share_id = ""
     restore_host_id = ""
     DEBUG = False
+    export_flag = False
 
     optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hD', ["backup=", "fileset=", "creds=", "date=", "help", "debug"])
     for opt, a in optlist:
@@ -224,6 +231,7 @@ if __name__ == "__main__":
               if x['hostname'] == restore_host and x['exportPoint'] == restore_share:
                     restore_share_id = x['id']
                     restore_host_id = x['hostId']
+                    export_flag = True
                     valid = True
                     break
             if restore_share_id == "":
@@ -290,13 +298,13 @@ if __name__ == "__main__":
     dprint(str(restore_job))
     for job in restore_job:
         if job[1]:
-            restore_config = generate_restore_config(job[1], restore_path, delim)
-            if restore_host != host:
-                print "EXPORT JOB"
-                restore_config += {"hostId": restore_host_id, "shareId": restore_share_id}
+            if export_flag:
                 job_type = "export_files"
+                restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
+                restore_config.update({"hostId": restore_host_id, "shareId": restore_share_id})
             else:
                 job_type = "restore_files"
+                restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
             dprint(job[0] + ":")
             dprint(str(restore_config))
             job_time = get_job_time(snap_list, job[0])
