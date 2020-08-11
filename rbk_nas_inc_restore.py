@@ -1,4 +1,6 @@
 #!/usr/bin/python
+
+from __future__ import print_function
 import rubrik_cdm
 import sys
 import getopt
@@ -10,6 +12,12 @@ import datetime
 import pytz
 import time
 
+def python_input(message):
+    if int(sys.version[0]) > 2:
+        val = input(message)
+    else:
+        val = raw_input(message)
+    return(val)
 
 def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore):
     offset = 0
@@ -59,16 +67,16 @@ def run_restore(type, rubrik, snap_id, restore_config):
         restore_job_status = rubrik.get('v1', job_status_path)
         job_status = restore_job_status['status']
         if job_status in ['RUNNING', 'QUEUED', 'ACQUIRING', 'FINISHING']:
-            print "Progress: " + str(restore_job_status['progress']) + "%"
+            print("Progress: " + str(restore_job_status['progress']) + "%")
             time.sleep(5)
         elif job_status == "SUCCEEDED":
-            print "Done"
+            print("Done")
             done = True
         elif job_status == "TO_CANCEL" or 'endTime' in job_status:
             sys.stderr.write("Job ended with status: " + job_status + "\n")
             exit(1)
         else:
-            print "Status: " + job_status
+            print("Status: " + job_status)
     return()
 
 def generate_restore_config(files, restore_type, restore_path, delim):
@@ -308,16 +316,4 @@ if __name__ == "__main__":
             job_time = get_job_time(snap_list, job[0])
             print "Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path
             run_restore(job_type, rubrik, job[0], restore_config)
-
-
-
-
-
-
-
-
-
-
-
-
 
