@@ -106,7 +106,7 @@ def generate_restore_config(files, restore_type, restore_path, delim):
 
 def get_job_time(snap_list, id):
     time = ""
-    print "JOB=" + id
+    print("JOB=" + id)
     for snap in snap_list:
         if snap[0] == id:
             time = snap[1]
@@ -115,11 +115,11 @@ def get_job_time(snap_list, id):
 
 def dprint(message):
     if DEBUG:
-        print message + "\n"
+        print(message + "\n")
     return()
 
 def usage():
-    print "Usage goes here"
+    print("Usage goes here")
     exit (0)
 
 
@@ -155,11 +155,11 @@ if __name__ == "__main__":
             DEBUG = True
     rubrik_node = args[0]
     if not backup:
-        backup = raw_input("Backup (host:share): ")
+        backup = python_input("Backup (host:share): ")
     if not fileset:
-        fileset = raw_input ("Fileset: ")
+        fileset = python_input ("Fileset: ")
     if not user:
-        user = raw_input("User: ")
+        user = python_input("User: ")
     if not password:
         password = getpass.getpass("Password: ")
     host, share = backup.split (":")
@@ -196,41 +196,41 @@ if __name__ == "__main__":
         snap_dt_s = snap_dt.strftime('%Y-%m-%d %H:%M:%S')
         snap_list.append((s_id, snap_dt_s))
     for i, snap in enumerate(snap_list):
-        print str(i) + ": " + snap[1] + "  [" + snap[0] + "]"
+        print(str(i) + ": " + snap[1] + "  [" + snap[0] + "]")
     valid = False
     while not valid:
-        start_index = raw_input("Starting backup: ")
+        start_index = python_input("Starting backup: ")
         try:
             start_id = snap_list[int(start_index)][0]
         except (IndexError, TypeError, ValueError) as e:
-            print "Invalid Index: " + str(e)
+            print("Invalid Index: " + str(e))
             continue
         valid = True
     valid = False
     while not valid:
-        end_index = raw_input("Last backup: ")
+        end_index = python_input("Last backup: ")
         try:
             end_id = snap_list[int(end_index)][0]
         except (IndexError, TypeError, ValueError) as e:
-            print "Invalid Index: " + str(e)
+            print("Invalid Index: " + str(e))
             continue
         if end_index < start_index:
-            print "Last snap must be later than the first"
+            print("Last snap must be later than the first")
             continue
         valid = True
     do_full = False
-    do_full_s = raw_input("Use starting backup as first full (y/n): ")
+    do_full_s = python_input("Use starting backup as first full (y/n): ")
     if do_full_s.startswith('Y') or do_full_s.startswith('y'):
         do_full = True
     valid = False
     while not valid:
-        restore_location = raw_input("Restore Location: ")
+        restore_location = python_input("Restore Location: ")
         if ':' in restore_location:
             try:
                 (restore_host, restore_share, restore_path) = restore_location.split(':')
             except ValueError as e:
-                print str(e)
-                print "Export format is host:share:path"
+                print(str(e))
+                print("Export format is host:share:path")
                 continue
             hs_data = rubrik.get('internal', '/host/share')
             for x in hs_data['data']:
@@ -250,30 +250,30 @@ if __name__ == "__main__":
             else:
                 restore_path = restore_location
             valid = True
-    print "Start: " + snap_list[int(start_index)][1] + " [" + start_id + "]"
-    print "Last: " + snap_list[int(end_index)][1] + " [" + end_id + "]"
+    print("Start: " + snap_list[int(start_index)][1] + " [" + start_id + "]")
+    print("Last: " + snap_list[int(end_index)][1] + " [" + end_id + "]")
     if do_full:
-        print "Use Starting backup as a full backup"
+        print("Use Starting backup as a full backup")
     else:
-        print "Use Starting backup as baseline for incrementals"
+        print("Use Starting backup as baseline for incrementals")
     if restore_location == "":
-        print "Restore to: Original Location"
+        print("Restore to: Original Location")
     else:
-        print "Restore to: " + restore_host + ":" + restore_share + ":" + restore_path
-    go_s = raw_input("Is this correct? (y/n): ")
+        print("Restore to: " + restore_host + ":" + restore_share + ":" + restore_path)
+    go_s = python_input("Is this correct? (y/n): ")
     if not go_s.startswith('Y') and not go_s.startswith('y'):
         exit (0)
     current_index = int(start_index)
     if do_full:
         if restore_host == host and restore_share == share:
-            print "In-place Full Restore from  " + snap_list[int(start_index)][1]
+            print("In-place Full Restore from  " + snap_list[int(start_index)][1])
             restore_config = {"sourceDir": restore_path, "destinationDir": restore_path, "ignoreErrors": True}
             run_restore("restore_file", rubrik, start_id, restore_config)
         else:
-            print "Full Restore from " + snap_list[int(start_index)][1] + " to " + restore_host + ":" + restore_path
+            print("Full Restore from " + snap_list[int(start_index)][1] + " to " + restore_host + ":" + restore_path)
             restore_config = {"sourceDir": delim, "destinationDir": restore_path, "ingoreErrors": True, "hostId": restore_host_id, "shareId": restore_share_id}
             run_restore("export_file", rubrik, start_id, restore_config)
-    print "Gathering Incremental Data..."
+    print("Gathering Incremental Data...")
     snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
     inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
     inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
@@ -289,7 +289,7 @@ if __name__ == "__main__":
         current_index += 1
     dprint(str(restore_job))
     x = 0
-    print "Reducing Incremental Data..."
+    print("Reducing Incremental Data...")
     while x < len(restore_job)-1:
         delete_list = []
         for i, f in enumerate(restore_job[x][1]):
@@ -314,6 +314,6 @@ if __name__ == "__main__":
             dprint(job[0] + ":")
             dprint(str(restore_config))
             job_time = get_job_time(snap_list, job[0])
-            print "Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path
+            print("Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path)
             run_restore(job_type, rubrik, job[0], restore_config)
 
