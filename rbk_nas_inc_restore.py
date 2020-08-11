@@ -92,7 +92,7 @@ def generate_restore_config(files, restore_type, restore_path, delim):
                 restore_path_instance = file_path
         else:
             restore_path_instance = restore_path + file_path
-        print "Instance = " + restore_path_instance
+        print("Instance = " + restore_path_instance)
         if restore_type == "restore_files":
             file_config = {"path": f, "restorePath": restore_path_instance}
         else:
