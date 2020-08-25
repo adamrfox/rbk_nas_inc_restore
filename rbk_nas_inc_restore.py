@@ -119,7 +119,14 @@ def dprint(message):
     return()
 
 def usage():
-    print("Usage goes here")
+    sys.stderr.write("Usage: rbk_nas_inc_restore.py [-hDr] [-b backup] [-f fileset] [-c creds] rubrik\n")
+    sys.stderr.write("-h | --help : Prints Usage\n")
+    sys.stderr.write("-D | --debug : Debug mode.  Prints more information\n")
+    sys.stderr.write("-r | --report : Report Mode.  Do not restore, rather show files in the selected backups\n")
+    sys.stderr.write("-b | --backup : Specify a NAS backup.  Format is server:share\n")
+    sys.stderr.write("-f | --fileset : Specify a fileset for the share\n")
+    sys.stderr.write("-c | --creds : Specify cluster credentials.  Not secure.  Format is user:password\n")
+    sys.stderr.write("rubrik : Name or IP of the Rubrik Cluster\n")
     exit (0)
 
 
@@ -138,8 +145,9 @@ if __name__ == "__main__":
     restore_host_id = ""
     DEBUG = False
     export_flag = False
+    REPORT_ONLY = False
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hD', ["backup=", "fileset=", "creds=", "date=", "help", "debug"])
+    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDr', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report"])
     for opt, a in optlist:
         if opt in ("-b", "--backup"):
             backup = a
@@ -153,7 +161,12 @@ if __name__ == "__main__":
             date = a
         if opt in ("-D", "--debug"):
             DEBUG = True
-    rubrik_node = args[0]
+        if opt in ("-r", "--report"):
+            REPORT_ONLY =- True
+    try:
+        rubrik_node = args[0]
+    except:
+        usage()
     if not backup:
         backup = python_input("Backup (host:share): ")
     if not fileset:
@@ -219,47 +232,49 @@ if __name__ == "__main__":
             continue
         valid = True
     do_full = False
-    do_full_s = python_input("Use starting backup as first full (y/n): ")
-    if do_full_s.startswith('Y') or do_full_s.startswith('y'):
-        do_full = True
-    valid = False
-    while not valid:
-        restore_location = python_input("Restore Location: ")
-        if ':' in restore_location:
-            try:
-                (restore_host, restore_share, restore_path) = restore_location.split(':')
-            except ValueError as e:
-                print(str(e))
-                print("Export format is host:share:path")
-                continue
-            hs_data = rubrik.get('internal', '/host/share')
-            for x in hs_data['data']:
-              if x['hostname'] == restore_host and x['exportPoint'] == restore_share:
-                    restore_share_id = x['id']
-                    restore_host_id = x['hostId']
-                    export_flag = True
-                    valid = True
-                    break
-            if restore_share_id == "":
-                sys.stderr.write("Restore Share Not Found.\n")
-        else:
-            restore_host = host
-            restore_share = share
-            if restore_location == "":
-                restore_path = delim
+    if not REPORT_ONLY:
+        do_full_s = python_input("Use starting backup as first full (y/n): ")
+        if do_full_s.startswith('Y') or do_full_s.startswith('y'):
+            do_full = True
+        valid = False
+        while not valid:
+            restore_location = python_input("Restore Location: ")
+            if ':' in restore_location:
+                try:
+                    (restore_host, restore_share, restore_path) = restore_location.split(':')
+                except ValueError as e:
+                    print(str(e))
+                    print("Export format is host:share:path")
+                    continue
+                hs_data = rubrik.get('internal', '/host/share')
+                for x in hs_data['data']:
+                    if x['hostname'] == restore_host and x['exportPoint'] == restore_share:
+                        restore_share_id = x['id']
+                        restore_host_id = x['hostId']
+                        export_flag = True
+                        valid = True
+                        break
+                if restore_share_id == "":
+                    sys.stderr.write("Restore Share Not Found.\n")
             else:
-                restore_path = restore_location
-            valid = True
+                restore_host = host
+                restore_share = share
+                if restore_location == "":
+                    restore_path = delim
+                else:
+                    restore_path = restore_location
+                valid = True
     print("Start: " + snap_list[int(start_index)][1] + " [" + start_id + "]")
     print("Last: " + snap_list[int(end_index)][1] + " [" + end_id + "]")
-    if do_full:
-        print("Use Starting backup as a full backup")
-    else:
-        print("Use Starting backup as baseline for incrementals")
-    if restore_location == "":
-        print("Restore to: Original Location")
-    else:
-        print("Restore to: " + restore_host + ":" + restore_share + ":" + restore_path)
+    if not REPORT_ONLY:
+        if do_full:
+            print("Use Starting backup as a full backup")
+        else:
+            print("Use Starting backup as baseline for incrementals")
+        if restore_location == "":
+            print("Restore to: Original Location")
+        else:
+            print("Restore to: " + restore_host + ":" + restore_share + ":" + restore_path)
     go_s = python_input("Is this correct? (y/n): ")
     if not go_s.startswith('Y') and not go_s.startswith('y'):
         exit (0)
@@ -277,43 +292,52 @@ if __name__ == "__main__":
     snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
     inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
     inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
-    current_index += 1
+    if not REPORT_ONLY:
+        current_index += 1
     while current_index <= int(end_index):
         files_to_restore = []
         files_to_restore = walk_tree(rubrik, snap_list[current_index][0], inc_date_epoch, delim, delim, {}, files_to_restore)
-        restore_job.append((snap_list[current_index][0], files_to_restore))
-        if current_index <= int(end_index):
-            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
-            inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
-            inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
+        if REPORT_ONLY:
+            print ("FILES in " + str(snap_list[current_index][0]) + " [" + str(snap_list[current_index][1]) + "]")
+            for f in files_to_restore:
+                print("    " + str(f))
+            print ("-----------------")
+        else:
+            restore_job.append((snap_list[current_index][0], files_to_restore))
+            if current_index <= int(end_index):
+                snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
+                inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
+                inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
         current_index += 1
     dprint(str(restore_job))
     x = 0
-    print("Reducing Incremental Data...")
-    while x < len(restore_job)-1:
-        delete_list = []
-        for i, f in enumerate(restore_job[x][1]):
-            y = x + 1
-            while y < len(restore_job):
-                if f in restore_job[y][1]:
-                    delete_list.append(f)
-                y += 1
-        for dc in delete_list:
-            restore_job[x][1].remove(dc)
-        x += 1
-    dprint(str(restore_job))
-    for job in restore_job:
-        if job[1]:
-            if export_flag:
-                job_type = "export_files"
-                restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
-                restore_config.update({"hostId": restore_host_id, "shareId": restore_share_id})
-            else:
-                job_type = "restore_files"
-                restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
-            dprint(job[0] + ":")
-            dprint(str(restore_config))
-            job_time = get_job_time(snap_list, job[0])
-            print("Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path)
-            run_restore(job_type, rubrik, job[0], restore_config)
+    if not REPORT_ONLY:
+        print("Reducing Incremental Data...")
+        while x < len(restore_job)-1:
+            delete_list = []
+            for i, f in enumerate(restore_job[x][1]):
+                y = x + 1
+                while y < len(restore_job):
+                    if f in restore_job[y][1]:
+                        delete_list.append(f)
+                    y += 1
+            for dc in delete_list:
+                restore_job[x][1].remove(dc)
+            x += 1
+        dprint(str(restore_job))
+        for job in restore_job:
+            if job[1]:
+                if export_flag:
+                    job_type = "export_files"
+                    restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
+                    restore_config.update({"hostId": restore_host_id, "shareId": restore_share_id})
+                else:
+                    job_type = "restore_files"
+                    restore_config = generate_restore_config(job[1], job_type, restore_path, delim)
+                dprint(job[0] + ":")
+                dprint(str(restore_config))
+                job_time = get_job_time(snap_list, job[0])
+                print("Incremental Restore from " + job_time + " to " + restore_host + " : " + restore_path)
+                run_restore(job_type, rubrik, job[0], restore_config)
+
 
