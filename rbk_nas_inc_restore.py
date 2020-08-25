@@ -162,7 +162,7 @@ if __name__ == "__main__":
         if opt in ("-D", "--debug"):
             DEBUG = True
         if opt in ("-r", "--report"):
-            REPORT_ONLY =- True
+            REPORT_ONLY = True
     try:
         rubrik_node = args[0]
     except:
