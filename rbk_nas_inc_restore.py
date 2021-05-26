@@ -175,10 +175,11 @@ if __name__ == "__main__":
         backup = python_input("Backup (host:share): ")
     if not fileset:
         fileset = python_input ("Fileset: ")
-    if not user:
-        user = python_input("User: ")
-    if not password:
-        password = getpass.getpass("Password: ")
+    if not token:
+        if not user:
+            user = python_input("User: ")
+        if not password:
+            password = getpass.getpass("Password: ")
     host, share = backup.split (":")
     if share.startswith("/"):
         delim = "/"
