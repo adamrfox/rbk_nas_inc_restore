@@ -165,7 +165,7 @@ if __name__ == "__main__":
             DEBUG = True
         if opt in ("-r", "--report"):
             REPORT_ONLY = True
-        if opt in ("-t", "--token")
+        if opt in ("-t", "--token"):
             token = a
     try:
         rubrik_node = args[0]
