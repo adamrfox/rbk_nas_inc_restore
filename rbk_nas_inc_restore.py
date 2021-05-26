@@ -126,6 +126,7 @@ def usage():
     sys.stderr.write("-b | --backup : Specify a NAS backup.  Format is server:share\n")
     sys.stderr.write("-f | --fileset : Specify a fileset for the share\n")
     sys.stderr.write("-c | --creds : Specify cluster credentials.  Not secure.  Format is user:password\n")
+    sys.stderr.write("-t | --token : Use an API token instead of credentials\n")
     sys.stderr.write("rubrik : Name or IP of the Rubrik Cluster\n")
     exit (0)
 
@@ -143,11 +144,12 @@ if __name__ == "__main__":
     restore_location = ""
     restore_share_id = ""
     restore_host_id = ""
+    token = ""
     DEBUG = False
     export_flag = False
     REPORT_ONLY = False
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDr', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report"])
+    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report", "token="])
     for opt, a in optlist:
         if opt in ("-b", "--backup"):
             backup = a
@@ -163,6 +165,8 @@ if __name__ == "__main__":
             DEBUG = True
         if opt in ("-r", "--report"):
             REPORT_ONLY = True
+        if opt in ("-t", "--token")
+            token = a
     try:
         rubrik_node = args[0]
     except:
@@ -183,7 +187,10 @@ if __name__ == "__main__":
 #
 # Find the latest snapshot for the share and  determine the date (2nd newest snap) or use the one provided by the user
 #
-    rubrik = rubrik_cdm.Connect(rubrik_node, user, password)
+    if token:
+        rubrik = rubrik_cdm.Connect(rubrik_node, api_token=token)
+    else:
+        rubrik = rubrik_cdm.Connect(rubrik_node, user, password)
     rubrik_config = rubrik.get('v1', '/cluster/me')
     rubrik_tz = rubrik_config['timezone']['timezone']
     local_zone = pytz.timezone(rubrik_tz)
