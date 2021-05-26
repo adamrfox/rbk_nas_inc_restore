@@ -297,6 +297,10 @@ if __name__ == "__main__":
     else:
         if current_index == 0:
             inc_date_epoch = 0
+        else:
+            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index-1][0]))
+            inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
+            inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
     while current_index <= int(end_index):
         files_to_restore = []
         dprint("INDEX: " + str(current_index) + "// DATE: " + str(inc_date_epoch))
