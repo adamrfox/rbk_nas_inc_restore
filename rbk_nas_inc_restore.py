@@ -118,11 +118,18 @@ def dprint(message):
         print(message + "\n")
     return()
 
+def oprint(message, fh):
+    if not fh:
+        print(message)
+    else:
+        fh.write(message + "\n")
+
 def usage():
     sys.stderr.write("Usage: rbk_nas_inc_restore.py [-hDr] [-b backup] [-f fileset] [-c creds] rubrik\n")
     sys.stderr.write("-h | --help : Prints Usage\n")
     sys.stderr.write("-D | --debug : Debug mode.  Prints more information\n")
     sys.stderr.write("-r | --report : Report Mode.  Do not restore, rather show files in the selected backups\n")
+    sys.stderr.write("-o | --output : Specify an output file.  Only used with Report Mode\n")
     sys.stderr.write("-b | --backup : Specify a NAS backup.  Format is server:share\n")
     sys.stderr.write("-f | --fileset : Specify a fileset for the share\n")
     sys.stderr.write("-c | --creds : Specify cluster credentials.  Not secure.  Format is user:password\n")
@@ -148,8 +155,10 @@ if __name__ == "__main__":
     DEBUG = False
     export_flag = False
     REPORT_ONLY = False
+    outfile = ""
+    ofh = ""
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report", "token="])
+    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:o:', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report", "token=", "output="])
     for opt, a in optlist:
         if opt in ("-b", "--backup"):
             backup = a
@@ -167,6 +176,8 @@ if __name__ == "__main__":
             REPORT_ONLY = True
         if opt in ("-t", "--token"):
             token = a
+        if opt in ("-o", "--outout"):
+            outfile = a
     try:
         rubrik_node = args[0]
     except:
@@ -309,15 +320,17 @@ if __name__ == "__main__":
             snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index-1][0]))
             inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
             inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
+        if outfile:
+            ofh = open(outfile, "w")
     while current_index <= int(end_index):
         files_to_restore = []
         dprint("INDEX: " + str(current_index) + "// DATE: " + str(inc_date_epoch))
         files_to_restore = walk_tree(rubrik, snap_list[current_index][0], inc_date_epoch, delim, delim, {}, files_to_restore)
         if REPORT_ONLY:
-            print ("FILES in " + str(snap_list[current_index][0]) + " [" + str(snap_list[current_index][1]) + "]")
+            oprint ("FILES in " + str(snap_list[current_index][0]) + " [" + str(snap_list[current_index][1]) + "]", ofh)
             for f in files_to_restore:
-                print("    " + str(f))
-            print ("-----------------")
+                oprint("    " + str(f), ofh)
+            oprint ("-----------------", ofh)
         else:
             restore_job.append((snap_list[current_index][0], files_to_restore))
         if current_index <= int(end_index):
