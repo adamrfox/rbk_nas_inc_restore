@@ -5,7 +5,6 @@ import rubrik_cdm
 import sys
 import getopt
 import getpass
-import urllib
 import urllib3
 urllib3.disable_warnings()
 import datetime
