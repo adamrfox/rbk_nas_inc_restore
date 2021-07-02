@@ -23,7 +23,7 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore):
     done = False
     while not done:
         params = {"path": path, "offset": offset}
-        rbk_walk = rubrik.get('v1', '/fileset/snapshot/' + str(id) + '/browse', params=params)
+        rbk_walk = rubrik.get('v1', '/fileset/snapshot/' + str(id) + '/browse', params=params, timeout=timeout)
         for dir_ent in rbk_walk['data']:
             offset += 1
             if dir_ent == parent:
@@ -63,7 +63,7 @@ def run_restore(type, rubrik, snap_id, restore_config):
     job_status_path = "/" + "/".join(job_status_url[5:])
     done = False
     while not done:
-        restore_job_status = rubrik.get('v1', job_status_path)
+        restore_job_status = rubrik.get('v1', job_status_path, timeout=timeout)
         job_status = restore_job_status['status']
         if job_status in ['RUNNING', 'QUEUED', 'ACQUIRING', 'FINISHING']:
             print("Progress: " + str(restore_job_status['progress']) + "%")
@@ -156,6 +156,7 @@ if __name__ == "__main__":
     REPORT_ONLY = False
     outfile = ""
     ofh = ""
+    timeout = 300
 
     optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:o:', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report", "token=", "output="])
     for opt, a in optlist:
@@ -202,11 +203,11 @@ if __name__ == "__main__":
         rubrik = rubrik_cdm.Connect(rubrik_node, api_token=token)
     else:
         rubrik = rubrik_cdm.Connect(rubrik_node, user, password)
-    rubrik_config = rubrik.get('v1', '/cluster/me')
+    rubrik_config = rubrik.get('v1', '/cluster/me', timeout=timeout)
     rubrik_tz = rubrik_config['timezone']['timezone']
     local_zone = pytz.timezone(rubrik_tz)
     utc_zone = pytz.timezone('utc')
-    hs_data = rubrik.get('internal', '/host/share')
+    hs_data = rubrik.get('internal', '/host/share', timeout=timeout)
     for x in hs_data['data']:
         if x['hostname'] == host and x['exportPoint'] == share:
             share_id = x['id']
@@ -214,10 +215,10 @@ if __name__ == "__main__":
     if share_id == "":
         sys.stderr.write("Share not found\n")
         exit(2)
-    fs_data = rubrik.get('v1', str("/fileset?share_id=" + share_id + "&name=" + fileset))
+    fs_data = rubrik.get('v1', str("/fileset?share_id=" + share_id + "&name=" + fileset), timeout=timeout)
     fs_id = fs_data['data'][0]['id']
     dprint(fs_id)
-    snap_data = rubrik.get('v1', str("/fileset/" + fs_id))
+    snap_data = rubrik.get('v1', str("/fileset/" + fs_id), timeout=timeout)
     for snap in snap_data['snapshots']:
         s_time = snap['date']
         s_id = snap['id']
@@ -264,7 +265,7 @@ if __name__ == "__main__":
                     print(str(e))
                     print("Export format is host:share:path")
                     continue
-                hs_data = rubrik.get('internal', '/host/share')
+                hs_data = rubrik.get('internal', '/host/share', timeout=timeout)
                 for x in hs_data['data']:
                     if x['hostname'] == restore_host and x['exportPoint'] == restore_share:
                         restore_share_id = x['id']
@@ -307,7 +308,7 @@ if __name__ == "__main__":
             restore_config = {"sourceDir": delim, "destinationDir": restore_path, "ingoreErrors": True, "hostId": restore_host_id, "shareId": restore_share_id}
             run_restore("export_file", rubrik, start_id, restore_config)
     print("Gathering Incremental Data...")
-    snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
+    snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]), timeout=timeout)
     inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
     inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
     if not REPORT_ONLY:
@@ -316,7 +317,7 @@ if __name__ == "__main__":
         if current_index == 0:
             inc_date_epoch = 0
         else:
-            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index-1][0]))
+            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index-1][0]), timeout=timeout)
             inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
             inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
         if outfile:
@@ -333,7 +334,7 @@ if __name__ == "__main__":
         else:
             restore_job.append((snap_list[current_index][0], files_to_restore))
         if current_index <= int(end_index):
-            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]))
+            snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]), timeout=timeout)
             inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
             inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
         current_index += 1
