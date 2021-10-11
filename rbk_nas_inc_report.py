@@ -19,22 +19,6 @@ except ImportError:
 import shutil
 from random import randrange
 
-class AtomicCounter:
-
-    def __init__(self, initial=0):
-        """Initialize a new atomic counter to given initial value (default 0)."""
-        self.value = initial
-        self._lock = threading.Lock()
-
-
-    def increment(self, num=1):
-        """Atomically increment the counter by num (default 1) and return the
-        new value.
-        """
-        with self._lock:
-            self.value += num
-            return self.value
-
 def python_input(message):
     if int(sys.version[0]) > 2:
         val = input(message)
@@ -46,7 +30,6 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore, outf
     offset = 0
     done = False
     file_count = 0
-    run_count.increment()
     job_path = path.split(delim)
     job_path_s = '_'.join(job_path)
     job_id = str(outfile) + str(job_path_s) + '.part'
@@ -92,8 +75,6 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore, outf
                 job_queue.put(threading.Thread(name=new_path, target=walk_tree, args=(rubrik, id, inc_date, delim, new_path, dir_ent, files_to_restore, outfile)))
         if not rbk_walk['hasMore']:
             done = True
-        else:
-            run_count.increment(-1)
     fh.close()
 
 def get_job_time(snap_list, id):
@@ -175,7 +156,6 @@ if __name__ == "__main__":
     outfile = ""
     ofh = ""
     timeout = 300
-    run_count = AtomicCounter()
     rubrik_cluster = []
     job_queue = queue.Queue()
     max_threads = 0
@@ -284,7 +264,6 @@ if __name__ == "__main__":
     if not go_s.startswith('Y') and not go_s.startswith('y'):
         exit (0)
     current_index = int(start_index)
-    print("Gathering Incremental Data...")
     snap_info = rubrik.get('v1', '/fileset/snapshot/' + str(snap_list[current_index][0]), timeout=timeout)
     inc_date = datetime.datetime.strptime(snap_info['date'][:-5], "%Y-%m-%dT%H:%M:%S")
     inc_date_epoch = (inc_date - datetime.datetime(1970, 1, 1)).total_seconds()
@@ -300,18 +279,18 @@ if __name__ == "__main__":
                                                                   delim, delim, {}, files_to_restore, outfile)).start()
     print("Waiting for jobs to queue")
     time.sleep(10)
-    while not job_queue.empty() or (job_queue.empty and run_count.value > 0):
-        if run_count.value < max_threads and not job_queue.empty():
+    while not job_queue.empty() or (job_queue.empty and threading.activeCount() > 0):
+        if threading.activeCount() < max_threads and not job_queue.empty():
             job = job_queue.get()
             print("\nQueue: " + str(job_queue.qsize()))
-            print("Running Threads: " + str(run_count.value))
+            print("Running Threads: " + str(threading.activeCount()))
             job.start()
         elif not job_queue.empty():
             time.sleep(10)
             print("\nQueue: " + str(job_queue.qsize()))
-            print("Running Threads: " + str(run_count.value))
+            print("Running Threads: " + str(threading.activeCount()))
             print("Q: " + str(list(job_queue.queue)))
         else:
-            print("\nWaiting on " + str(run_count.value) + " jobs to finish.")
+            print("\nWaiting on " + str(threading.activeCount()) + " jobs to finish.")
             time.sleep(10)
     print("done")
