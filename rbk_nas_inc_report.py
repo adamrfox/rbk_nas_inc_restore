@@ -94,7 +94,6 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore, outf
             done = True
         else:
             run_count.increment(-1)
-            print("JOB_DONE")
     fh.close()
 
 def get_job_time(snap_list, id):
@@ -171,7 +170,7 @@ if __name__ == "__main__":
     restore_host_id = ""
     token = ""
     DEBUG = False
-    VERBOSE = True
+    VERBOSE = False
     REPORT_ONLY = True
     outfile = ""
     ofh = ""
