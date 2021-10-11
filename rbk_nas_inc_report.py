@@ -289,7 +289,7 @@ if __name__ == "__main__":
             time.sleep(10)
             print("\nQueue: " + str(job_queue.qsize()))
             print("Running Threads: " + str(threading.activeCount()))
-            print("Q: " + str(list(job_queue.queue)))
+#            print("Q: " + str(list(job_queue.queue)))
         else:
             print("\nWaiting on " + str(threading.activeCount()) + " jobs to finish.")
             time.sleep(10)
