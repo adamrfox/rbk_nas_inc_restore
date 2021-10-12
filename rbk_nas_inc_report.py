@@ -279,18 +279,18 @@ if __name__ == "__main__":
                                                                   delim, delim, {}, files_to_restore, outfile)).start()
     print("Waiting for jobs to queue")
     time.sleep(10)
-    while not job_queue.empty() or (job_queue.empty and threading.activeCount() > 0):
-        if threading.activeCount() < max_threads and not job_queue.empty():
+    while not job_queue.empty() or (job_queue.empty and threading.activeCount() > 1):
+        if threading.activeCount()-1 < max_threads and not job_queue.empty():
             job = job_queue.get()
             print("\nQueue: " + str(job_queue.qsize()))
-            print("Running Threads: " + str(threading.activeCount()))
+            print("Running Threads: " + str(threading.activeCount()-1))
             job.start()
         elif not job_queue.empty():
             time.sleep(10)
             print("\nQueue: " + str(job_queue.qsize()))
-            print("Running Threads: " + str(threading.activeCount()))
+            print("Running Threads: " + str(threading.activeCount()-1))
 #            print("Q: " + str(list(job_queue.queue)))
         else:
-            print("\nWaiting on " + str(threading.activeCount()) + " jobs to finish.")
+            print("\nWaiting on " + str(threading.activeCount()-1) + " jobs to finish.")
             time.sleep(10)
     print("done")
