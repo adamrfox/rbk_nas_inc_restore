@@ -186,6 +186,8 @@ if __name__ == "__main__":
             usage()
         if opt in ("-d", "--date"):
             date = a
+            date_dt = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
+            date_dt_s = datetime.datetime.strftime(date_dt, "%Y-%m-%d %H:%M:%S")
         if opt in ("-D", "--debug"):
             DEBUG = True
         if opt in ("-t", "--token"):
@@ -293,7 +295,13 @@ if __name__ == "__main__":
         start_index = len(snap_list)-1
         start_id = snap_list[-1][0]
     elif date:
-        pass
+        dprint("TDATE: " + date_dt_s)
+        for i, s in enumerate(snap_list):
+            dprint(str(i) + ": " + s[1])
+            if date_dt_s == s[1]:
+                dprint("MATCH!")
+                start_index = i
+                start_id = snap_list[i][0]
     else:
         for i, snap in enumerate(snap_list):
             print(str(i) + ": " + snap[1] + "  [" + snap[0] + "]")
