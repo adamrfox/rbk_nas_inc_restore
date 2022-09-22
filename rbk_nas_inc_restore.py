@@ -10,6 +10,14 @@ urllib3.disable_warnings()
 import datetime
 import pytz
 import time
+import threading
+try:
+    import queue
+except ImportError:
+    import Queue as queue
+from random import randrange
+from pprint import pprint
+
 
 def python_input(message):
     if int(sys.version[0]) > 2:
@@ -22,7 +30,13 @@ def walk_tree (rubrik, id, inc_date, delim, path, parent, files_to_restore):
     offset = 0
     done = False
     while not done:
+        job_ptr = randrange(len(rubrik_cluster))
         params = {"path": path, "offset": offset}
+        if offset == 0:
+            if VERBOSE:
+                dprint("Scanning " + path + " on " + rubrik_cluster[job_ptr]['name'])
+            else:
+                print(' . ', end='')
         rbk_walk = rubrik.get('v1', '/fileset/snapshot/' + str(id) + '/browse', params=params, timeout=timeout)
         for dir_ent in rbk_walk['data']:
             offset += 1
@@ -114,7 +128,9 @@ def get_job_time(snap_list, id):
 
 def dprint(message):
     if DEBUG:
-        print(message + "\n")
+        dfh = open(debug_log, "a")
+        dfh.write(message + "\n")
+        dfh.close()
     return()
 
 def oprint(message, fh):
@@ -122,6 +138,30 @@ def oprint(message, fh):
         print(message)
     else:
         fh.write(message + "\n")
+
+def get_rubrik_nodes(rubrik, user, password, token):
+    node_list = []
+    cluster_network = rubrik.get('internal', '/cluster/me/network_interface')
+    for n in cluster_network['data']:
+        if n['interfaceType'] == "Management":
+            if token:
+                try:
+                    rbk_session = rubrik_cdm.Connect(n['ipAddresses'][0], api_token=token)
+                except Exception as e:
+                    sys.stderr.write("Error on " + n['ipAddresses'][0] + ": " + str(e) + ".  Skipping\n")
+                    continue
+            else:
+                try:
+                    rbk_session = rubrik_cdm.Connect(n['ipAddresses'][0], user, password)
+                except Exception as e:
+                    sys.stderr.write("Error on " + n['ipAddresses'][0] + ": " + str(e) + ".  Skipping\n")
+                    continue
+            try:
+                node_list.append({'session': rbk_session, 'name': n['nodeName']})
+            except KeyError:
+                node_list.append({'session': rbk_session, 'name': n['node']})
+    return(node_list)
+
 
 def usage():
     sys.stderr.write("Usage: rbk_nas_inc_restore.py [-hDr] [-b backup] [-f fileset] [-c creds] rubrik\n")
@@ -152,13 +192,25 @@ if __name__ == "__main__":
     restore_host_id = ""
     token = ""
     DEBUG = False
+    VERBOSE = False
     export_flag = False
     REPORT_ONLY = False
     outfile = ""
     ofh = ""
     timeout = 300
+    debug_log = "debug_log.txt"
+    job_queue = queue.Queue()
+    large_trees = queue.Queue()
+    files_to_restore = queue.Queue()
+    SINGLE_NODE = False
+    physical = False
+    max_threads = 0
+    rubrik_cluster = []
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:o:', ["backup=", "fileset=", "creds=", "date=", "help", "debug", "report", "token=", "output="])
+
+    optlist, args = getopt.getopt(sys.argv[1:], 'b:f:c:d:hDrt:o:m:spv', ["backup=", "fileset=", "creds=", "date=", "help",
+                                                                        "debug", "report", "token=", "output=", '--max_threads=',
+                                                                        '--singele_node', '--physical', '--verbose'])
     for opt, a in optlist:
         if opt in ("-b", "--backup"):
             backup = a
@@ -172,18 +224,37 @@ if __name__ == "__main__":
             date = a
         if opt in ("-D", "--debug"):
             DEBUG = True
+            VERBOSE = True
+            dfh = open(debug_log, "w")
+            dfh.close()
         if opt in ("-r", "--report"):
             REPORT_ONLY = True
         if opt in ("-t", "--token"):
             token = a
         if opt in ("-o", "--outout"):
             outfile = a
+        if opt in ("-m", "--max_threads"):
+            max_threads = int(a)
+        if opt in ("-s", '--single_node'):
+            SINGLE_NODE = True
+        if opt in ('-p', '--physical'):
+            physical = True
+        if opt in ('-v', '--verbose'):
+            VERBOSE = True
+
     try:
         rubrik_node = args[0]
     except:
         usage()
     if not backup:
-        backup = python_input("Backup (host:share): ")
+        if not physical:
+            backup = python_input("Backup (host:share): ")
+        else:
+            backup = python_input("Host: ")
+    if not physical:
+        host, share = backup.split(':')
+    else:
+        host = backup
     if not fileset:
         fileset = python_input ("Fileset: ")
     if not token:
@@ -191,11 +262,12 @@ if __name__ == "__main__":
             user = python_input("User: ")
         if not password:
             password = getpass.getpass("Password: ")
-    host, share = backup.split (":")
-    if share.startswith("/"):
-        delim = "/"
-    else:
-        delim = "\\"
+    if not physical:
+        if share.startswith("/"):
+            delim = "/"
+        else:
+            delim = "\\"
+        initial_path = delim
 #
 # Find the latest snapshot for the share and  determine the date (2nd newest snap) or use the one provided by the user
 #
@@ -207,17 +279,47 @@ if __name__ == "__main__":
     rubrik_tz = rubrik_config['timezone']['timezone']
     local_zone = pytz.timezone(rubrik_tz)
     utc_zone = pytz.timezone('utc')
-    hs_data = rubrik.get('internal', '/host/share', timeout=timeout)
-    for x in hs_data['data']:
-        if x['hostname'] == host and x['exportPoint'] == share:
-            share_id = x['id']
+    if not SINGLE_NODE:
+        rubrik_cluster = get_rubrik_nodes(rubrik, user, password, token)
+    else:
+        rubrik_cluster.append({'session': rubrik, 'name': rubrik_config['name']})
+    dprint(str(rubrik_cluster))
+    if max_threads == 0:
+        max_threads = 10*len(rubrik_cluster)
+    print("Using up to " + str(max_threads) + " threads across " + str(len(rubrik_cluster)) + " nodes")
+    if not physical:
+        hs_data = rubrik.get('internal', '/host/share', timeout=timeout)
+        for x in hs_data['data']:
+            if x['hostname'] == host and x['exportPoint'] == share:
+                share_id = x['id']
+                break
+        if share_id == "":
+            sys.stderr.write("Share not found\n")
+            exit(2)
+        fs_data = rubrik.get('v1', str("/fileset?share_id=" + share_id + "&name=" + fileset), timeout=timeout)
+    else:
+        hs_data = rubrik.get('v1', '/host?name=' + host, timeout=timeout)
+        share_id = str(hs_data['data'][0]['id'])
+        os_type = str(hs_data['data'][0]['operatingSystemType'])
+        dprint("OS_TYPE: " + os_type)
+        if os_type == "Windows":
+            delim = "\\"
+        else:
+            delim = "/"
+        initial_path = "/"
+        if share_id == "":
+            sys.stderr.write("Host not found\n")
+            exit(2)
+        fs_data = rubrik.get('v1', '/fileset?host_id=' + share_id, timeout=timeout)
+    fs_id = ""
+    for fs in fs_data['data']:
+        if fs['name'] == fileset:
+            fs_id = fs['id']
             break
-    if share_id == "":
-        sys.stderr.write("Share not found\n")
+    dprint("FS_ID: " + fs_id)
+    if fs_id == "":
+        sys.stderr.write("Can't find fileset: " + fileset + '\n')
         exit(2)
-    fs_data = rubrik.get('v1', str("/fileset?share_id=" + share_id + "&name=" + fileset), timeout=timeout)
-    fs_id = fs_data['data'][0]['id']
-    dprint(fs_id)
     snap_data = rubrik.get('v1', str("/fileset/" + fs_id), timeout=timeout)
     for snap in snap_data['snapshots']:
         s_time = snap['date']
@@ -277,7 +379,8 @@ if __name__ == "__main__":
                     sys.stderr.write("Restore Share Not Found.\n")
             else:
                 restore_host = host
-                restore_share = share
+                if not physical:
+                    restore_share = share
                 if restore_location == "":
                     restore_path = delim
                 else:
@@ -323,9 +426,8 @@ if __name__ == "__main__":
         if outfile:
             ofh = open(outfile, "w")
     while current_index <= int(end_index):
-        files_to_restore = []
         dprint("INDEX: " + str(current_index) + "// DATE: " + str(inc_date_epoch))
-        files_to_restore = walk_tree(rubrik, snap_list[current_index][0], inc_date_epoch, delim, delim, {}, files_to_restore)
+        files_to_restore = walk_tree(rubrik_cluster, snap_list[current_index][0], inc_date_epoch, delim, initial_path, {}, files_to_restore)
         if REPORT_ONLY:
             oprint ("FILES in " + str(snap_list[current_index][0]) + " [" + str(snap_list[current_index][1]) + "]", ofh)
             for f in files_to_restore:
