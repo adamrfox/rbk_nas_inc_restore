@@ -74,9 +74,75 @@ def job_queue_length(thread_list):
     list_check = []
     for thread in threading.enumerate():
         if thread.name in thread_list:
-            list_check.append(thread_name)
+            list_check.append(thread.name)
     dprint("JQD returns " + str(len(list_check)))
     return(len(list_check))
+
+def file_compare_new(files_in_base_dir, local_path, files_to_restore):
+    for f in files_in_base_dir.keys():
+        if local_path:
+            f = local_path + f
+        try:
+            f_stat = os.stat(f)
+        except FileNotFoundError:
+            files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
+            continue
+#        print(f + ": LOCAL: " + str(int(f_stat.st_mtime)) + " // " + str(int(files_in_base_dir[f]['time'])))
+        if f_stat.st_mtime < files_in_base_dir[f]['time']:
+            files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
+        elif OVERWRITE_NEW and int(f_stat.st_mtime) > int(files_in_base_dir[f]['time']):
+            files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
+
+def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
+    offset = 0
+    done = False
+    file_count = 0
+    files_in_base_dir = {}
+    restore_candidates = []
+    while not done:
+        job_ptr = randrange(len(rubrik_cluster))
+        params = {'path': path, "offset": offset}
+        if offset == 0:
+            if VERBOSE:
+                print("Starting job " + path + " on " + rubrik_cluster[job_ptr]['name'])
+            else:
+                print (' . ', end='')
+        rbk_walk = rubrik_cluster[job_ptr]['session'].get('v1', '/fileset/snapshot/' + str(id) + "/browse",
+                                                          params=params, timeout=timeout)
+        file_count = 0
+        for dir_ent in rbk_walk['data']:
+            offset += 1
+            file_count += 1
+            if dir_ent == parent:
+                return
+            if dir_ent['fileMode'] == "directory" or dir_ent['fileMode'] == "drive":
+                if dir_ent['fileMode'] == "drive":
+                    new_path = dir_ent['filename']
+                elif delim == "/":
+                    if path == "/":
+                        new_path = "/" + dir_ent['path']
+                    else:
+                        new_path = path + '/' + dir_ent['path']
+                else:
+                    if path == "\\":
+                        new_path = "\\" + dir_ent['path']
+                    else:
+                        new_path = path + '\\' + dir_ent['path']
+                job_queue.put(threading.Thread(name=new_path, target=walk_tree, args=(rubrik, id, local_path, delim,
+                                                                                  new_path, dir_ent, files_to_restore)))
+            else:
+                files_in_base_dir[path + delim + str(dir_ent['filename'])] = {'size': dir_ent['size'],
+                    'time': time.mktime(time.strptime(dir_ent['lastModified'][:-5], '%Y-%m-%dT%H:%M:%S'))}
+        if not rbk_walk['hasMore']:
+            done = True
+        else:
+            dprint("HASMORE: " + str(offset))
+#    print("FILES_IN_BD: "+ str(files_in_base_dir))
+    file_compare_new(files_in_base_dir, local_path, files_to_restore)
+    if file_count == 200000:
+        large_trees.put(path)
+
+
 
 def usage():
     sys.stderr.write("Usage goes here\n")
@@ -101,6 +167,7 @@ if __name__ == "__main__":
     DEBUG = False
     VERBOSE = False
     REPORT_ONLY = False
+    OVERWRITE_NEW = False
     ofh = ""
     timeout = 360
     rubrik_cluster = []
@@ -109,13 +176,14 @@ if __name__ == "__main__":
     thread_factor = 10
     debug_log = "debug_log.txt"
     large_trees = queue.Queue()
-    parts = queue.Queue()
+    files_to_restore = queue.Queue()
     SINGLE_NODE = False
+    thread_list = []
 
-    (optlist, args) = getopt.getopt(sys.argv[1:], 'b:f:c:hd:Dt:sm:M:vl', ['backup=', 'fileset=', 'creds=', 'date=',
+    (optlist, args) = getopt.getopt(sys.argv[1:], 'b:f:c:hd:Dt:sm:M:vlor', ['backup=', 'fileset=', 'creds=', 'date=',
                                                                           'help', 'DEBUG', 'token=', 'max_threads=',
-                                                                          'thread-factor=', 'single_node', 'verbose',
-                                                                          'latest'])
+                                                                          'thread_factor=', 'single_node', 'verbose',
+                                                                          'latest', '--overwrite', '--report_only'])
     for opt, a in optlist:
         if opt in ('-b', '--backup'):
             backup = a
@@ -144,11 +212,20 @@ if __name__ == "__main__":
             VERBOSE = True
         if opt in ('-l', '--latest'):
             latest = True
+        if opt in ('-o', '--overwrite'):
+            OVERWRITE_NEW = True
+        if opt in ('-r', '--report_only'):
+            REPORT_ONLY = True
+
     try:
-        (rubrik_node, local_path) = args
+        rubrik_node = args[0]
     except:
         dprint("Usage Called.  No Rubrik Node/local path")
         usage()
+    try:
+        local_path = args[1]
+    except:
+        local_path = ""
     if not backup:
         backup = python_input("Backup: ")
     if not ':' in backup:
@@ -195,7 +272,7 @@ if __name__ == "__main__":
         if share_id == "":
             sys.stderr.write("Share not found.\n")
             exit(2)
-        fs_data = rubrik.get('v1', str('/fileset?share_id=' + share_id + '&name=fileset'), timeout=timeout)
+        fs_data = rubrik.get('v1', str('/fileset?share_id=' + share_id), timeout=timeout)
     else:
         hs_data = rubrik.get('v1', '/host?name=' + host, timeout=timeout)
         share_id = str(hs_data['data'][0]['id'])
@@ -210,12 +287,16 @@ if __name__ == "__main__":
             sys.stderr.write("Host not found.\n")
             exit(2)
         fs_data = rubrik.get('v1', '/fileset?host_id=' + share_id, timeout=timeout)
+    dprint("FS_DATA: " + str(fs_data))
     fs_id = ""
     for fs in fs_data['data']:
         if fs['name'] == fileset:
             fs_id = fs['id']
             break
     dprint("FS_ID: " + str(fs_id))
+    if fs_id == "":
+        sys.stderr.write("Fileset not found: " + fileset + "\n")
+        exit(2)
     snap_data = rubrik.get('v1', str('/fileset/' + fs_id), timeout=timeout)
     for snap in snap_data['snapshots']:
         s_time = snap['date']
@@ -249,9 +330,56 @@ if __name__ == "__main__":
                 continue
             valid = True
     print("Backup    : " + snap_list[int(snap_index)][1] + " [" + snap_id + "]")
-    print("Compare to: " + local_path)
+    if local_path:
+        print("Compare to: " + local_path)
+    else:
+        print("Compare to: local path")
     if not latest and not date:
         go_s = python_input("Is this Correct? (y/n): ")
         if not go_s.startswith('Y') and not go_s.startswith('y'):
             exit(0)
 
+    threading.Thread(name='root', target=walk_tree, args=(rubrik, snap_list[int(snap_index)][0], local_path, delim,
+                                                          initial_path, {}, files_to_restore)).start()
+    thread_list.append('root')
+    print("Waiting for jobs to queue")
+    time.sleep(20)
+    first = True
+    while first or (not job_queue.empty() or job_queue_length(thread_list)):
+        first = False
+        jql = job_queue_length(thread_list)
+        if jql < max_threads and not job_queue.empty():
+            #            dprint(str(list(job_queue.queue)))
+            job = job_queue.get()
+            print("\nQueue: " + str(job_queue.qsize()))
+            print("Running Threads: " + str(jql))
+            dprint("Started job: " + str(job))
+            job.start()
+            thread_list.append(job.name)
+        elif not job_queue.empty():
+            time.sleep(10)
+            print("\nQueue: " + str(job_queue.qsize()))
+            print("Running Threads: " + str(jql))
+        else:
+            if DEBUG:
+                dprint(str(threading.active_count()) + " running:")
+                for t in threading.enumerate():
+                    dprint("\t " + str(t.name))
+                dprint('\n')
+            if jql > 0:
+                print("\nWaiting on " + str(jql) + " jobs to finish.")
+            time.sleep(10)
+        print(list(job_queue.queue))
+        print(thread_list)
+    if not large_trees.empty():
+        print("NOTE: There is an default API browse limit of 200K files per directory.")
+        print("The following directories could have more than 200K files:")
+        for d in large_trees.queue:
+            print(d)
+        print("\nThis value can be raised by Rubrik Support. If you need this, open a case with Rubrik")
+    if REPORT_ONLY or VERBOSE:
+        print("Files to Restore:")
+        for f in files_to_restore.queue:
+            print(f['name'] + ',' + str(f['size']))
+        if REPORT_ONLY:
+            exit(0)
