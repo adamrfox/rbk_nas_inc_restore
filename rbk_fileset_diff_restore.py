@@ -93,6 +93,13 @@ def file_compare_new(files_in_base_dir, local_path, files_to_restore):
         elif OVERWRITE_NEW and int(f_stat.st_mtime) > int(files_in_base_dir[f]['time']):
             files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
 
+def dir_has_no_files(job_ptr, new_path, id):
+    params = {'path': new_path, 'offset': 0}
+    dir_chk = rubrik_cluster[job_ptr]['session'].get('v1', '/fileset/snapshot/' + str(id) + '/browse', params=params,
+                                                        timeout=timeout)
+    return(len(dir_chk['data']) == 0)
+
+
 def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
     offset = 0
     done = False
@@ -128,8 +135,14 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
                         new_path = "\\" + dir_ent['path']
                     else:
                         new_path = path + '\\' + dir_ent['path']
+                try:
+                    os.stat(new_path)
+                except FileNotFoundError:
+                    if dir_has_no_files(job_ptr, new_path, id):
+                        files_to_restore.put({'name': new_path, 'size': 0})
+                        continue
                 job_queue.put(threading.Thread(name=new_path, target=walk_tree, args=(rubrik, id, local_path, delim,
-                                                                                  new_path, dir_ent, files_to_restore)))
+                                                                                    new_path, dir_ent, files_to_restore)))
             else:
                 files_in_base_dir[path + delim + str(dir_ent['filename'])] = {'size': dir_ent['size'],
                     'time': time.mktime(time.strptime(dir_ent['lastModified'][:-5], '%Y-%m-%dT%H:%M:%S'))}
@@ -179,11 +192,14 @@ if __name__ == "__main__":
     files_to_restore = queue.Queue()
     SINGLE_NODE = False
     thread_list = []
+    FILES_PER_RESTORE_JOB = 5000
+    files_in_directory = {}
 
-    (optlist, args) = getopt.getopt(sys.argv[1:], 'b:f:c:hd:Dt:sm:M:vlor', ['backup=', 'fileset=', 'creds=', 'date=',
+    (optlist, args) = getopt.getopt(sys.argv[1:], 'b:f:c:hd:Dt:sm:M:vlorF:', ['backup=', 'fileset=', 'creds=', 'date=',
                                                                           'help', 'DEBUG', 'token=', 'max_threads=',
                                                                           'thread_factor=', 'single_node', 'verbose',
-                                                                          'latest', '--overwrite', '--report_only'])
+                                                                          'latest', '--overwrite', 'report_only',
+                                                                              'files_per_job='])
     for opt, a in optlist:
         if opt in ('-b', '--backup'):
             backup = a
@@ -216,6 +232,8 @@ if __name__ == "__main__":
             OVERWRITE_NEW = True
         if opt in ('-r', '--report_only'):
             REPORT_ONLY = True
+        if opt in ('-F', '--file_per_job'):
+            FILES_PER_RESTORE_JOB = int(a)
 
     try:
         rubrik_node = args[0]
@@ -367,10 +385,10 @@ if __name__ == "__main__":
                     dprint("\t " + str(t.name))
                 dprint('\n')
             if jql > 0:
-                print("\nWaiting on " + str(jql) + " jobs to finish.")
+                print("\nWaiting on " + str(jql-1) + " jobs to finish.")
             time.sleep(10)
-        print(list(job_queue.queue))
-        print(thread_list)
+        dprint(str(list(job_queue.queue)))
+        dprint(str(thread_list))
     if not large_trees.empty():
         print("NOTE: There is an default API browse limit of 200K files per directory.")
         print("The following directories could have more than 200K files:")
@@ -378,7 +396,7 @@ if __name__ == "__main__":
             print(d)
         print("\nThis value can be raised by Rubrik Support. If you need this, open a case with Rubrik")
     if REPORT_ONLY or VERBOSE:
-        print("Files to Restore:")
+        print("Files to Restore (" + str(files_to_restore.qsize()) + "):")
         for f in files_to_restore.queue:
             print(f['name'] + ',' + str(f['size']))
         if REPORT_ONLY:
