@@ -144,8 +144,10 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
                 job_queue.put(threading.Thread(name=new_path, target=walk_tree, args=(rubrik, id, local_path, delim,
                                                                                     new_path, dir_ent, files_to_restore)))
             else:
+                mt_s = datetime.datetime.strptime(dir_ent['lastModified'][:-5], '%Y-%m-%dT%H:%M:%S')
+                mt = (mt_s - datetime.datetime(1970, 1, 1)).total_seconds()
                 files_in_base_dir[path + delim + str(dir_ent['filename'])] = {'size': dir_ent['size'],
-                    'time': time.mktime(time.strptime(dir_ent['lastModified'][:-5], '%Y-%m-%dT%H:%M:%S'))}
+                    'time': mt}
         if not rbk_walk['hasMore']:
             done = True
         else:
