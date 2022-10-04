@@ -93,6 +93,7 @@ def file_compare_new(files_in_base_dir, local_path, files_to_restore):
         elif OVERWRITE_NEW and int(f_stat.st_mtime) > int(files_in_base_dir[f]['time']):
             files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
 
+
 def dir_has_no_files(job_ptr, new_path, id):
     params = {'path': new_path, 'offset': 0}
     dir_chk = rubrik_cluster[job_ptr]['session'].get('v1', '/fileset/snapshot/' + str(id) + '/browse', params=params,
@@ -105,7 +106,6 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
     done = False
     file_count = 0
     files_in_base_dir = {}
-    restore_candidates = []
     while not done:
         job_ptr = randrange(len(rubrik_cluster))
         params = {'path': path, "offset": offset}
@@ -156,6 +156,18 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
         large_trees.put(path)
 
 
+def build_restore_job(files, path, max_files):
+    print(list(files.queue))
+    files_list = []
+    while files.qsize() and len(files_list) <= max_files:
+        f = files.get()
+        rpf = f['name'].split(delim)
+        rpf.pop()
+        rpath = delim.join(rpf)
+        files_list.append({'path': f['name'], 'restorePath': rpath})
+    res_cfg = {'restoreConfig': files_list, 'ignoreErrors': True}
+    return(res_cfg)
+
 
 def usage():
     sys.stderr.write("Usage goes here\n")
@@ -192,6 +204,7 @@ if __name__ == "__main__":
     files_to_restore = queue.Queue()
     SINGLE_NODE = False
     thread_list = []
+    restore_config = {}
     FILES_PER_RESTORE_JOB = 5000
     files_in_directory = {}
 
@@ -395,9 +408,43 @@ if __name__ == "__main__":
         for d in large_trees.queue:
             print(d)
         print("\nThis value can be raised by Rubrik Support. If you need this, open a case with Rubrik")
+    total_files_to_restore = str(files_to_restore.qsize())
     if REPORT_ONLY or VERBOSE:
-        print("Files to Restore (" + str(files_to_restore.qsize()) + "):")
+        print("Files to Restore (" + str(total_files_to_restore) + "):")
         for f in files_to_restore.queue:
             print(f['name'] + ',' + str(f['size']))
         if REPORT_ONLY:
             exit(0)
+    print('\nTotal files to restore: ' + str(total_files_to_restore))
+    while files_to_restore.qsize():
+        restore_config = build_restore_job(files_to_restore, local_path, FILES_PER_RESTORE_JOB)
+        print(restore_config)
+        if not REPORT_ONLY:
+            print("Restoring " + str(len(restore_config['restoreConfig'])) + " files")
+            rubrik_restore = rubrik.post('internal', '/fileset/snapshot/' + str(snap_id) + "/restore_files", restore_config)
+            job_status_url = str(rubrik_restore['links'][0]['href']).split('/')
+            job_status_path = "/" + "/".join(job_status_url[5:])
+            done = False
+            first = True
+            while not done:
+                restore_job_status = rubrik.get('v1', job_status_path, timeout=timeout)
+                job_status = restore_job_status['status']
+                if job_status in ['RUNNING', 'QUEUED', 'ACQUIRING', 'FINISHING']:
+                    if first:
+                        first = False
+                        print("\nProgress: " + str(restore_job_status['progress']) + "%", end='')
+                    else:
+                        for i in enumerate(range(plen + 1)):
+                            print('\b', end='')
+                        print(str(restore_job_status['progress']) + "%", end='')
+                    plen = len(str(restore_job_status['progress']))
+                    time.sleep(5)
+                elif job_status == "SUCCEEDED":
+                    print("\nDone")
+                    done = True
+                elif job_status == "TO_CANCEL" or 'endTime' in job_status:
+                    sys.stderr.write("\nJob ended with status: " + job_status + "\n")
+                    exit(1)
+                else:
+                    print("Status: " + job_status)
+            print("QUEUE_SIZE: " + str(files_to_restore.qsize()))
