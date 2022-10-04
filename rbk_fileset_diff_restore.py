@@ -159,7 +159,6 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
 
 
 def build_restore_job(files, path, max_files):
-    print(list(files.queue))
     files_list = []
     while files.qsize() and len(files_list) <= max_files:
         f = files.get()
@@ -359,7 +358,7 @@ if __name__ == "__main__":
             try:
                 snap_id = snap_list[int(snap_index)][0]
             except (IndexError, TypeError, ValueError) as e:
-                print("Invalid Nase Index: " + str(e))
+                print("Invalid Base Index: " + str(e))
                 continue
             valid = True
     print("Backup    : " + snap_list[int(snap_index)][1] + " [" + snap_id + "]")
@@ -420,7 +419,7 @@ if __name__ == "__main__":
     print('\nTotal files to restore: ' + str(total_files_to_restore))
     while files_to_restore.qsize():
         restore_config = build_restore_job(files_to_restore, local_path, FILES_PER_RESTORE_JOB)
-        print(restore_config)
+        dprint(restore_config)
         if not REPORT_ONLY:
             print("Restoring " + str(len(restore_config['restoreConfig'])) + " files")
             rubrik_restore = rubrik.post('internal', '/fileset/snapshot/' + str(snap_id) + "/restore_files", restore_config)
