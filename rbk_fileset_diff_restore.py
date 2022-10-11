@@ -81,9 +81,11 @@ def job_queue_length(thread_list):
 def file_compare_new(files_in_base_dir, local_path, files_to_restore):
     for f in files_in_base_dir.keys():
         if local_path:
-            f = local_path + f
+            lf = local_path + f
+        else:
+            lf = f
         try:
-            f_stat = os.stat(f)
+            f_stat = os.stat(lf)
         except FileNotFoundError:
             files_to_restore.put({'name': f, 'size': files_in_base_dir[f]['size']})
             continue
@@ -135,8 +137,12 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
                         new_path = "\\" + dir_ent['path']
                     else:
                         new_path = path + '\\' + dir_ent['path']
+                if local_path:
+                    local_new_path = local_path + new_path
+                else:
+                    local_new_path = new_path
                 try:
-                    os.stat(new_path)
+                    os.stat(local_new_path)
                 except FileNotFoundError:
                     if dir_has_no_files(job_ptr, new_path, id):
                         files_to_restore.put({'name': new_path, 'size': 0})
@@ -146,7 +152,10 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
             else:
                 mt_s = datetime.datetime.strptime(dir_ent['lastModified'][:-5], '%Y-%m-%dT%H:%M:%S')
                 mt = (mt_s - datetime.datetime(1970, 1, 1)).total_seconds()
-                files_in_base_dir[path + delim + str(dir_ent['filename'])] = {'size': dir_ent['size'],
+                if path == delim:
+                    files_in_base_dir[delim + str(dir_ent['filename'])] = {'size': dir_ent['size'], 'time': mt}
+                else:
+                    files_in_base_dir[path + delim + str(dir_ent['filename'])] = {'size': dir_ent['size'],
                     'time': mt}
         if not rbk_walk['hasMore']:
             done = True
