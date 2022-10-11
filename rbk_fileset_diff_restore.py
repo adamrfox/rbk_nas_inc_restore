@@ -174,6 +174,8 @@ def build_restore_job(files, path, max_files):
         rpf = f['name'].split(delim)
         rpf.pop()
         rpath = delim.join(rpf)
+        if rpath == "":
+            rpath = delim
         files_list.append({'path': f['name'], 'restorePath': rpath})
     res_cfg = {'restoreConfig': files_list, 'ignoreErrors': True}
     return(res_cfg)
@@ -428,7 +430,8 @@ if __name__ == "__main__":
     print('\nTotal files to restore: ' + str(total_files_to_restore))
     while files_to_restore.qsize():
         restore_config = build_restore_job(files_to_restore, local_path, FILES_PER_RESTORE_JOB)
-        dprint(restore_config)
+        dprint("RESTORE_CONFIG:")
+        dprint(str(restore_config))
         if not REPORT_ONLY:
             print("Restoring " + str(len(restore_config['restoreConfig'])) + " files")
             rubrik_restore = rubrik.post('internal', '/fileset/snapshot/' + str(snap_id) + "/restore_files", restore_config)
