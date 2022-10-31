@@ -217,7 +217,7 @@ if __name__ == "__main__":
     SINGLE_NODE = False
     thread_list = []
     restore_config = {}
-    FILES_PER_RESTORE_JOB = 5000
+    FILES_PER_RESTORE_JOB = 15000
     files_in_directory = {}
 
     (optlist, args) = getopt.getopt(sys.argv[1:], 'b:f:c:hd:Dt:sm:M:vlorF:', ['backup=', 'fileset=', 'creds=', 'date=',
@@ -450,6 +450,7 @@ if __name__ == "__main__":
                         for i in enumerate(range(plen + 1)):
                             print('\b', end='')
                         print(str(restore_job_status['progress']) + "%", end='')
+                        sys.stdout.flush()
                     plen = len(str(restore_job_status['progress']))
                     time.sleep(5)
                 elif job_status == "SUCCEEDED":
