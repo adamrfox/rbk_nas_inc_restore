@@ -169,7 +169,9 @@ def walk_tree(rubrik, id, local_path, delim, path, parent, files_to_restore):
 
 def build_restore_job(files, path, max_files):
     files_list = []
-    while files.qsize() and len(files_list) < max_files:
+    while files.qsize():
+        if max_files > 0 and len(files_list) >= max_files:
+            break
         f = files.get()
         rpf = f['name'].split(delim)
         rpf.pop()
