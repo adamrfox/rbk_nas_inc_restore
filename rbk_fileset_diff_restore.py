@@ -184,7 +184,24 @@ def build_restore_job(files, path, max_files):
 
 
 def usage():
-    sys.stderr.write("Usage goes here\n")
+    sys.stderr.write("Usage: rbk_fileset_diff_restore.py [-hDsvlor] [-c creds] [-t token] [-b backup] [-f fileset] [-d date] [-m threads] [-M thread_factor] [-F files_per_restore] rubrik [local_path]\n")
+    sys.stderr.write("-h | --help : Prints Usage\n")
+    sys.stderr.write("-D | --DEBUG : Generate debugging information\n")
+    sys.stderr.write("-s | --single_node : Only use 1 Rubrik node\n")
+    sys.stderr.write("-v | --verbose : Verbose output\n")
+    sys.stderr.write("-l | --latest : Use the latest backup\n")
+    sys.stderr.write("-o | --overwrite : Overwrite newer files on source\n")
+    sys.stderr.write("-r | --report_only : Only show what would be restored.  No restore done\n")
+    sys.stderr.write("-c | --creds : Rubrik credentials [user:password].  Note: Does not work with MFA\n")
+    sys.stderr.write("-t | --token : Rubrik API Token\n")
+    sys.stderr.write("-b | --backup : Specify the Rubrik Backup [host for physical, host:share for NAS]\n")
+    sys.stderr.write("-f | --fileset : Specify the fileset associated with the host or share\n")
+    sys.stderr.write("-d | --date : Specify a specfic date/time stamp for the backup [%Y-%m-%dT%H:%M:%S]\n")
+    sys.stderr.write("-m | --max_threads : Specify the maximum number of scan threads [def: 10*nodes]\n")
+    sys.stderr.write("-M | --thread_factor : Specify the maximum number of scan threads by number of nodes [def: 10]\n")
+    sys.stderr.write("-F | --files_per_job : Specify the maximum number of files per restore job [def: " + str(FILES_PER_RESTORE_JOB) + "]\n")
+    sys.stderr.write("rubrik : Name or IP of a Rubrik node\n")
+    sys.stderr.write("local_path : Local path of the data on the host [NAS only]\n")
     exit(0)
 
 if __name__ == "__main__":
@@ -239,7 +256,7 @@ if __name__ == "__main__":
         if opt in ('-d', '--date'):
             date = a
             date_dt = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
-            date_dt_s = datetime.datetime.strftime(date_dt, "Y-%m-%dT%H:%M:%S")
+            date_dt_s = datetime.datetime.strftime(date_dt, "%Y-%m-%dT%H:%M:%S")
         if opt in ('-D', '--DEBUG'):
             VERBOSE = True
             DEBUG = True
@@ -259,7 +276,7 @@ if __name__ == "__main__":
             OVERWRITE_NEW = True
         if opt in ('-r', '--report_only'):
             REPORT_ONLY = True
-        if opt in ('-F', '--file_per_job'):
+        if opt in ('-F', '--files_per_job'):
             FILES_PER_RESTORE_JOB = int(a)
 
     try:
@@ -463,4 +480,4 @@ if __name__ == "__main__":
                     exit(1)
                 else:
                     print("Status: " + job_status)
-            print("QUEUE_SIZE: " + str(files_to_restore.qsize()))
+            print("Files Remaining to Restore: " + str(files_to_restore.qsize()))
